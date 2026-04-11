@@ -536,6 +536,19 @@ describe('McpOAuthService', () => {
 			expect(result.client_secret_expires_at).toBeUndefined();
 		});
 
+		it('public client registration stores null client_secret_hash', async () => {
+			tracker.on.select('directus_oauth_clients').response([{ count: 0 }]);
+			tracker.on.insert('directus_oauth_clients').response([]);
+
+			await service.registerClient(createTestClient({ token_endpoint_auth_method: 'none' }));
+
+			const insertCall = tracker.history.insert[0];
+			const bindings = insertCall!.bindings;
+			// Verify no 64-char hex string in bindings (would be a secret hash)
+			const hasHexHash = bindings.some((b: unknown) => typeof b === 'string' && /^[0-9a-f]{64}$/.test(b));
+			expect(hasHexHash).toBe(false);
+		});
+
 		it('unsupported auth method (e.g. private_key_jwt) rejected', async () => {
 			await assertOAuthError(
 				() => service.registerClient(createTestClient({ token_endpoint_auth_method: 'private_key_jwt' })),
@@ -3488,7 +3501,14 @@ describe('McpOAuthService', () => {
 		});
 
 		it('rejects empty payload after Basic prefix', () => {
-			expect(() => service.parseBasicAuth('Basic ')).toThrow(OAuthError);
+			try {
+				service.parseBasicAuth('Basic ');
+				expect.unreachable('should have thrown');
+			} catch (err) {
+				expect(err).toBeInstanceOf(OAuthError);
+				expect((err as OAuthError).status).toBe(400);
+				expect((err as OAuthError).code).toBe('invalid_request');
+			}
 		});
 
 		it('handles case-insensitive Basic scheme', () => {
@@ -3546,12 +3566,18 @@ describe('McpOAuthService', () => {
 		it('rejects mismatched client_id between header and body', () => {
 			const encoded = Buffer.from('client-a:secret').toString('base64');
 
-			expect(() =>
+			try {
 				service.resolveClientId({
 					client_id: 'client-b',
 					authorization_header: `Basic ${encoded}`,
-				}),
-			).toThrow(OAuthError);
+				});
+
+				expect.unreachable('should have thrown');
+			} catch (err) {
+				expect(err).toBeInstanceOf(OAuthError);
+				expect((err as OAuthError).status).toBe(400);
+				expect((err as OAuthError).code).toBe('invalid_request');
+			}
 		});
 
 		it('accepts matching client_id in header and body', () => {
@@ -3566,7 +3592,14 @@ describe('McpOAuthService', () => {
 		});
 
 		it('throws when no client_id available from any source', () => {
-			expect(() => service.resolveClientId({})).toThrow(OAuthError);
+			try {
+				service.resolveClientId({});
+				expect.unreachable('should have thrown');
+			} catch (err) {
+				expect(err).toBeInstanceOf(OAuthError);
+				expect((err as OAuthError).status).toBe(400);
+				expect((err as OAuthError).code).toBe('invalid_request');
+			}
 		});
 	});
 
@@ -3671,6 +3704,19 @@ describe('McpOAuthService', () => {
 			}
 		});
 
+		it('client_secret_basic: rejects body-only secret without header', () => {
+			const client = { token_endpoint_auth_method: 'client_secret_basic', client_secret_hash: secretHash };
+
+			try {
+				service.authenticateClient(client, { client_secret: secret });
+				expect.unreachable('should have thrown');
+			} catch (err) {
+				expect(err).toBeInstanceOf(OAuthError);
+				expect((err as OAuthError).status).toBe(400);
+				expect((err as OAuthError).code).toBe('invalid_request');
+			}
+		});
+
 		it('client_secret_post: missing secret rejects', () => {
 			const client = { token_endpoint_auth_method: 'client_secret_post', client_secret_hash: secretHash };
 
@@ -3710,6 +3756,7 @@ describe('McpOAuthService', () => {
 			} catch (err) {
 				expect(err).toBeInstanceOf(OAuthError);
 				expect((err as OAuthError).status).toBe(401);
+				expect((err as OAuthError).code).toBe('invalid_client');
 			}
 		});
 
@@ -3723,6 +3770,7 @@ describe('McpOAuthService', () => {
 			} catch (err) {
 				expect(err).toBeInstanceOf(OAuthError);
 				expect((err as OAuthError).status).toBe(401);
+				expect((err as OAuthError).code).toBe('invalid_client');
 			}
 		});
 
@@ -3735,6 +3783,7 @@ describe('McpOAuthService', () => {
 			} catch (err) {
 				expect(err).toBeInstanceOf(OAuthError);
 				expect((err as OAuthError).status).toBe(401);
+				expect((err as OAuthError).code).toBe('invalid_client');
 			}
 		});
 	});
