@@ -1,5 +1,7 @@
 import type { SchemaOverview } from '@directus/types';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { OAuthError } from '../services/mcp-oauth/types/error.js';
+import { isLoopbackHost } from '../services/mcp-oauth/utils/loopback.js';
 import { createMockRequest, createMockResponse, getRouteHandler } from '../test-utils/controllers.js';
 import { expectMcpBearerChallenge } from '../test-utils/mcp-oauth.js';
 
@@ -67,19 +69,7 @@ vi.mock('../services/mcp-oauth/index.js', () => {
 		.fn()
 		.mockResolvedValue('http://localhost/callback?code=abc&iss=http://localhost');
 
-	class OAuthError extends Error {
-		constructor(
-			public status: number,
-			public code: string,
-			public description: string,
-			public redirectable: boolean = false,
-		) {
-			super(description);
-			this.name = 'OAuthError';
-		}
-	}
-
-	return { McpOAuthService, OAuthError };
+	return { McpOAuthService, OAuthError, isLoopbackHost };
 });
 
 vi.mock('../utils/get-schema.js', () => ({
