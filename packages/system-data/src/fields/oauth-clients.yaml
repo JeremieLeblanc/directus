@@ -27,6 +27,10 @@ fields:
     hidden: true
   - field: token_endpoint_auth_method
     width: half
+  - field: client_secret_hash
+    special:
+      - conceal
+    hidden: true
   - field: tokens
     special:
       - o2m
